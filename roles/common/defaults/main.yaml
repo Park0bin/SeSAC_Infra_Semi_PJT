@@ -1,0 +1,7 @@
+---
+common_do_bootstrap: false
+common_do_baseline : true
+
+common_target_user: "ansible"
+common_local_pubkey_path: "{{ lookup('env','HOME') }}/.ssh/id_rsa.pub"
+...

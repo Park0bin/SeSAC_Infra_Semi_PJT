@@ -1,0 +1,8 @@
+---
+- name: Install packages (common)
+  ansible.builtin.yum:
+    name: "{{ common_packages | default([]) }}"
+    state: latest
+  when: (common_packages | default([])) | length > 0
+...
+

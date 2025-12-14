@@ -1,0 +1,15 @@
+---
+- name: DB servers
+  hosts: db
+  become: true
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/secrets.yaml"
+  roles:
+    - role: common
+      vars:
+        #common_do_bootstrap: true
+        #common_do_baseline: false
+      tags: [common]
+    - role: db
+      tags: [db]
+...

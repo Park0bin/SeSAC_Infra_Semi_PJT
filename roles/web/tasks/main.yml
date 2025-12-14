@@ -1,0 +1,9 @@
+---
+#- name: Deploy html content
+#  import_tasks: deploy_content.yaml
+#  tags: [content]
+
+- name: Deploy dynamic html content
+  import_tasks: deploy_dynamic_content.yaml    
+  tags: [content, template]
+...

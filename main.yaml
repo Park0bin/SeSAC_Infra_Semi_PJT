@@ -1,0 +1,6 @@
+---
+- import_playbook: playbooks/bootstrap/bootstrap.yaml
+- import_playbook: playbooks/services/web.yaml
+- import_playbook: playbooks/services/db.yaml
+- import_playbook: playbooks/services/lb_web.yaml
+...

@@ -1,0 +1,16 @@
+---
+common_packages:
+  - httpd
+
+common_services:
+  - httpd
+
+common_firewalld_services:
+  - http
+
+web_content_name: index.html
+web_content_dest_dir: /var/www/html
+
+web_services_restart: []
+web_services_reload: [httpd]
+...

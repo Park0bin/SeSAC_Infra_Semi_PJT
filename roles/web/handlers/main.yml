@@ -1,0 +1,19 @@
+---
+# 공통: 서비스 재시작(변수로 대상 결정)
+- name: web | restart services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+  loop: "{{ web_services_restart | default([]) }}"
+  when: (web_services_restart | default([])) | length > 0
+  listen: "web:restart"
+
+# 공통: 서비스 reload(지원되는 서비스만)
+- name: web | reload services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: reloaded
+  loop: "{{ web_services_reload | default([]) }}"
+  when: (web_services_reload | default([])) | length > 0
+  listen: "web:reload"
+...

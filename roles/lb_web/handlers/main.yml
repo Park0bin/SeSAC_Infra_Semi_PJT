@@ -1,0 +1,19 @@
+---
+# LB: 서비스 재시작(변수로 대상 결정)
+- name: lb | restart services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+  loop: "{{ lb_services_restart | default([]) }}"
+  when: (lb_services_restart | default([])) | length > 0
+  listen: "lb:restart"
+
+# LB: 서비스 reload(지원되는 서비스만)
+- name: lb | reload services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: reloaded
+  loop: "{{ lb_services_reload | default([]) }}"
+  when: (lb_services_reload | default([])) | length > 0
+  listen: "lb:reload"
+...

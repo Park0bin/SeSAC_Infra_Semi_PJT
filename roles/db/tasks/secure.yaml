@@ -1,0 +1,5 @@
+---
+- name: DB secure installation placeholder
+  ansible.builtin.debug:
+    msg: "DB 서버 보안 설정 mysql_secure_installation 모듈 추후 추가"
+...

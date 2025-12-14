@@ -1,0 +1,10 @@
+---
+common_packages:
+  - haproxy
+
+common_services:
+  - haproxy
+
+lb_services_restart: []
+lb_services_reload: [haproxy]
+...

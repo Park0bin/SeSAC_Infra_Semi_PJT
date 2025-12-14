@@ -1,0 +1,12 @@
+---
+- name: Bootstrap management user and SSH key
+  hosts: tests
+  gather_facts: false
+  become: true
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/secrets.yaml"
+  roles:
+    - role: common
+      common_do_bootstrap: true
+      tags: [common]
+...

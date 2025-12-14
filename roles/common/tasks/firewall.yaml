@@ -1,0 +1,25 @@
+---
+- name: Ensure firewalld is running
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+
+- name: Configure firewalld services (common)
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    state: enabled
+    permanent: true
+    immediate: true
+  loop: "{{ common_firewalld_services | default([]) }}"
+  when: (common_firewalld_services | default([])) | length > 0
+
+- name: Open firewalld ports (common)
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    state: enabled
+    permanent: true
+    immediate: true
+  loop: "{{ common_firewalld_ports | default([]) }}"
+  when: (common_firewalld_ports | default([])) | length > 0
+...

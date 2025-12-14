@@ -1,0 +1,10 @@
+---
+- name: Deploy index.html (templated)
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: "{{ (web_content_dest_dir | default('')) ~ '/' ~ (web_content_name | default('')) }}"
+  when:
+    - (web_content_name | default('')) | length > 0
+    - (web_content_dest_dir | default('')) | length > 0
+  notify: "web:reload"
+...

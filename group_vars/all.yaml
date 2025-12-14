@@ -1,0 +1,7 @@
+---
+# bootstrap에서 만들 계정
+common_target_user: "ansible"
+
+# 컨트롤 노드(로컬)의 공개키 경로
+common_local_pubkey_path: "{{ lookup('env','HOME') }}/.ssh/id_rsa.pub"
+...

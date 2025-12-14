@@ -1,0 +1,25 @@
+---
+- name: Create management user
+  ansible.builtin.user:
+    name: "{{ common_target_user }}"
+    password: "{{ user_password_hash }}"
+    state: present
+    create_home: true
+    shell: /bin/bash
+
+- name: Grant passwordless sudo (NOPASSWD)
+  ansible.builtin.copy:
+    content: "{{ common_target_user }} ALL=(ALL) NOPASSWD: ALL"
+    dest: "/etc/sudoers.d/{{ common_target_user }}"
+    mode: "0440"
+    owner: root
+    group: root
+    validate: "visudo -cf %s"
+
+- name: Install SSH public key for management user
+  ansible.posix.authorized_key:
+    user: "{{ common_target_user }}"
+    state: present
+    key: "{{ lookup('file', common_local_pubkey_path) }}"
+    manage_dir: true
+...

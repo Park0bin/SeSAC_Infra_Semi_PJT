@@ -1,0 +1,21 @@
+---
+- name: Create user and deploy key
+  import_tasks: bootstrap_user.yaml
+  when: common_do_bootstrap | bool
+  tags: [bootstrap]
+
+- name: Install packages
+  import_tasks: packages.yaml
+  when: common_do_baseline | bool
+  tags: [packages]
+
+- name: Configure services
+  import_tasks: services.yaml
+  when: common_do_baseline | bool
+  tags: [services]
+
+- name: Configure firewall
+  import_tasks: firewall.yaml
+  when: common_do_baseline | bool
+  tags: [firewall]
+...

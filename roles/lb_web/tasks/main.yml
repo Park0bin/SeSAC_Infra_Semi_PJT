@@ -1,0 +1,5 @@
+---
+- name: Deploy HAProxy config
+  import_tasks: config.yaml
+  tags: [config, template]
+...

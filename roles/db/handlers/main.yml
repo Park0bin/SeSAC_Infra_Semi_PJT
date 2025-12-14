@@ -1,0 +1,19 @@
+---
+# 공통: 서비스 재시작(변수로 대상 결정)
+- name: db | restart services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+  loop: "{{ db_services_restart | default([]) }}"
+  when: (db_services_restart | default([])) | length > 0
+  listen: "db:restart"
+
+# 공통: 서비스 reload(지원되는 서비스만)
+- name: db | reload services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: reloaded
+  loop: "{{ db_services_reload | default([]) }}"
+  when: (db_services_reload | default([])) | length > 0
+  listen: "db:reload"
+...

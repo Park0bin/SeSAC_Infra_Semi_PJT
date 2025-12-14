@@ -1,0 +1,5 @@
+---
+- name: Configure mysql_secure_installation
+  import_tasks: secure.yaml
+  tags: [security, mysql]
+...

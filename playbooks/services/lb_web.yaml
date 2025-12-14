@@ -1,0 +1,17 @@
+---
+- name: Web LoadBalancer servers
+  hosts: lb_web
+  become: true
+  vars_files:
+    - "{{ inventory_dir }}/group_vars/secrets.yaml"
+  roles:
+    - role: common
+      vars:
+        #common_do_bootstrap: true
+        #common_do_baseline: false
+      tags: [common]
+
+    - role: lb_web
+      tags: [lb_web, lb]
+...
+
