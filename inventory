@@ -20,16 +20,16 @@ db_01  ansible_host=192.168.56.151
 db_02  ansible_host=192.168.56.152
 
 [vpn_client]
-lb_web_01 
+vpn_client_01 ansible_host=192.168.56.10
 
 [vpn:children]
 vpn_client
 
 [nodes:children]
-lb_web
-lb_db
+lb
 web
 db
+vpn
 
 [tests]
 localhost

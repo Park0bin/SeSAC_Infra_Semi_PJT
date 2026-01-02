@@ -2,14 +2,12 @@
 - name: Web servers
   hosts: web
   become: true
-  vars_files:
-    - "{{ inventory_dir }}/group_vars/secrets.yaml"
   roles:
-    - role: common
-      vars:
+#    - role: common
+#      vars:
         #common_do_bootstrap: true
         #common_do_baseline: false
-      tags: [common]
+#      tags: [common]
 
     - role: web
       tags: [web]

@@ -4,5 +4,22 @@
     name: "{{ common_packages | default([]) }}"
     state: latest
   when: (common_packages | default([])) | length > 0
-...
+  register: common_pkg_install
 
+- name: Version checks (only when install task changed)
+  block:
+    - name: Show installed package versions
+      ansible.builtin.command: "rpm -q {{ item }}"
+      loop: "{{ common_packages | default([]) }}"
+      register: rpm_q
+      changed_when: false
+      failed_when: false
+
+    - name: Print versions
+      ansible.builtin.debug:
+        msg: "{{ item.item }} => {{ item.stdout | default('NOT_INSTALLED') }}"
+      loop: "{{ rpm_q.results }}"
+  when:
+    - (common_packages | default([])) | length > 0
+    - common_pkg_install.changed
+...

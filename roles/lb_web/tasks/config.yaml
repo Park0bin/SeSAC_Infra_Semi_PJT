@@ -7,6 +7,6 @@
     group: root
     mode: "0644"
     validate: "haproxy -c -f %s"
-  changed_when: true
+#  changed_when: true
   notify: "lb:reload"
 ...

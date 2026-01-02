@@ -4,3 +4,5 @@
 *.pem
 secrets*.yml
 *vault*
+Vagrantfile
+README.md
