@@ -1,6 +1,4 @@
 ---
-# roles/db/tasks/replication_master.yml
-
 - name: repl_master | Install replication cnf (master)
   ansible.builtin.template:
     src: 99-replication.cnf.j2
@@ -19,20 +17,31 @@
     delay: 2
     timeout: 60
 
-- name: repl_master | Create replication user
-  community.mysql.mysql_user:
-    name: "{{ mysql_repl_user }}"
-    password: "{{ mysql_repl_password }}"
-    priv: "*.*:REPLICATION SLAVE"
-    host: "%"
-    state: present
-    login_unix_socket: /var/lib/mysql/mysql.sock
-  no_log: true
+- name: Handle replication user creation
+  block:
+  - name: Create replication user
+    community.mysql.mysql_user:
+      name: "{{ mysql_repl_user }}"
+      password: "{{ mysql_repl_password }}"
+      priv: "*.*:REPLICATION SLAVE"
+      host: "%"
+      state: present
+    no_log: true
+
+  rescue:
+  - name: Report replication user creation failure
+    ansible.builtin.debug:
+      msg:
+      - "❌ 복제 사용자 생성 실패"
+      - "사용자명: {{ mysql_repl_user }}"
+
+  - name: Fail the playbook
+    ansible.builtin.fail:
+      msg: "복제 사용자 생성에 실패했습니다. 위 디버그 메시지를 확인하세요."
 
 - name: repl_master | Get primary status (File/Position)
   community.mysql.mysql_replication:
     mode: getprimary
-    login_unix_socket: /var/lib/mysql/mysql.sock
   register: master_status
 
 - name: repl_master | Store master coordinates on master hostvars
@@ -44,8 +53,8 @@
 - name: repl_master | Show master coordinates
   ansible.builtin.debug:
     msg:
-      - "MASTER: {{ inventory_hostname }}"
-      - "server-id={{ mysql_server_id }}"
-      - "File={{ master_status.File }}"
-      - "Position={{ master_status.Position }}"
+    - "MASTER: {{ inventory_hostname }}"
+    - "server-id={{ mysql_server_id }}"
+    - "File={{ master_status.File }}"
+    - "Position={{ master_status.Position }}"
 ...

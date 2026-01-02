@@ -3,15 +3,15 @@
   hosts: db
   become: true
   roles:
-#    - role: common
-#      vars:
-#        common_do_bootstrap: true
-        #common_do_baseline: false
-#      tags: [common]
-    - role: db
-      vars:
-        db_do_secure: false
-        db_do_setup: true
-#        db_do_replication: true
-      tags: [db]
+  - role: common
+    vars:
+      common_do_bootstrap: true
+      common_do_baseline: true
+    tags: [ common ]
+  - role: db
+    vars:
+      # db_do_secure: false
+      db_do_setup: true
+      db_do_replication: true
+    tags: [ db ]
 ...

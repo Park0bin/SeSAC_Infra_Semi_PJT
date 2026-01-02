@@ -1,6 +1,4 @@
 ---
-# roles/db/tasks/replication_slave.yml
-
 - name: repl_slave | Install replication cnf (slave)
   ansible.builtin.template:
     src: 99-replication.cnf.j2
@@ -19,54 +17,66 @@
     delay: 2
     timeout: 60
 
+# 기존 복제 설정 중지하고 재설정하는 방식으로 진행
+# 이중화 테스트를 위함이지만, 운영을 위해서는 다른 방식을 찾아보는 것도 좋을 것 같다.
 - name: repl_slave | Stop replica if running
   community.mysql.mysql_replication:
     mode: stopreplica
-    login_unix_socket: /var/lib/mysql/mysql.sock
   failed_when: false
 
 - name: repl_slave | Reset replica
   community.mysql.mysql_replication:
     mode: resetreplica
-    login_unix_socket: /var/lib/mysql/mysql.sock
   failed_when: false
 
-- name: repl_slave | Change primary to master
-  community.mysql.mysql_replication:
-    mode: changeprimary
-    primary_host: "{{ hostvars[groups['db_master'][0]].ansible_host | default(groups['db_master'][0]) }}"
-    primary_port: 3306
-    primary_user: "{{ mysql_repl_user }}"
-    primary_password: "{{ mysql_repl_password }}"
-    primary_log_file: "{{ hostvars[groups['db_master'][0]].repl_master_log_file }}"
-    primary_log_pos: "{{ hostvars[groups['db_master'][0]].repl_master_log_pos }}"
-    login_unix_socket: "{{ mysql_login_unix_socket | default('/var/lib/mysql/mysql.sock') }}"
-  no_log: true
+- name: Handle slave replication configuration
+  block:
+  - name: Change primary to master
+    community.mysql.mysql_replication:
+      mode: changeprimary
+      primary_host: "{{ hostvars[groups['db_master'][0]].ansible_host | default(groups['db_master'][0]) }}"
+      primary_port: 3306
+      primary_user: "{{ mysql_repl_user }}"
+      primary_password: "{{ mysql_repl_password }}"
+      primary_log_file: "{{ hostvars[groups['db_master'][0]].repl_master_log_file }}"
+      primary_log_pos: "{{ hostvars[groups['db_master'][0]].repl_master_log_pos }}"
+    no_log: true
+
+  rescue:
+  - name: Report replication configuration failure
+    ansible.builtin.debug:
+      msg:
+      - "❌ 슬레이브 복제 설정 실패"
+      - "마스터 호스트: {{ hostvars[groups['db_master'][0]].ansible_host | default(groups['db_master'][0]) }}"
+      - "복제 사용자: {{ mysql_repl_user }}"
+      - "바이너리 로그: {{ hostvars[groups['db_master'][0]].repl_master_log_file | default('알 수 없음') }}"
+      - "로그 위치: {{ hostvars[groups['db_master'][0]].repl_master_log_pos | default('알 수 없음') }}"
+
+  - name: Fail the playbook
+    ansible.builtin.fail:
+      msg: "슬레이브 복제 설정에 실패했습니다. 위 디버그 메시지를 확인하세요."
 
 - name: repl_slave | Start replica
   community.mysql.mysql_replication:
     mode: startreplica
-    login_unix_socket: "{{ mysql_login_unix_socket | default('/var/lib/mysql/mysql.sock') }}"
 
 - name: repl_slave | Get replica status
   community.mysql.mysql_replication:
     mode: getreplica
-    login_unix_socket: "{{ mysql_login_unix_socket | default('/var/lib/mysql/mysql.sock') }}"
   register: slave_status
 
 - name: repl_slave | Display replica status
   ansible.builtin.debug:
     msg:
-      - "SLAVE: {{ inventory_hostname }}"
-      - "server-id={{ mysql_server_id }}"
-      - "Slave_IO_Running={{ slave_status.Slave_IO_Running }}"
-      - "Slave_SQL_Running={{ slave_status.Slave_SQL_Running }}"
-      - "Seconds_Behind_Master={{ slave_status.Seconds_Behind_Master | default('N/A') }}"
+    - "SLAVE: {{ inventory_hostname }}"
+    - "server-id={{ mysql_server_id }}"
+    - "Slave_IO_Running={{ slave_status.Slave_IO_Running }}"
+    - "Slave_SQL_Running={{ slave_status.Slave_SQL_Running }}"
+    - "Seconds_Behind_Master={{ slave_status.Seconds_Behind_Master | default('N/A') }}"
 
 - name: repl_slave | Verify replication is working
   ansible.builtin.assert:
     that:
-      - slave_status.Slave_IO_Running == "Yes"
-      - slave_status.Slave_SQL_Running == "Yes"
+    - slave_status.Slave_IO_Running == "Yes"
+    - slave_status.Slave_SQL_Running == "Yes"
     fail_msg: "복제가 정상 작동하지 않습니다. slave_status를 확인하세요."
-

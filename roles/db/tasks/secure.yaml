@@ -5,92 +5,83 @@
     name: epel-release
     state: present
   when:
-    - ansible_os_family == "RedHat"
-    - (db_extra_packages | default([])) | length > 0
+  - ansible_os_family == "RedHat"
+  - (db_extra_packages | default([])) | length > 0
 
 - name: Install extra packages for db role (RedHat)
   ansible.builtin.package:
     name: "{{ db_extra_packages | default([]) }}"
     state: present
-  when: 
-    - (db_extra_packages | default([])) | length > 0
-    - ansible_os_family == "RedHat"
+  when:
+  - (db_extra_packages | default([])) | length > 0
+  - ansible_os_family == "RedHat"
 
 # 보안 설정
-- name: Config mysql secure installation 
+- name: Config mysql secure installation
   block:
-    # root 비밀번호 재설정
-    - name: Set root password using unix socket auth
-      community.mysql.mysql_user:
-        name: root
-        host: localhost
-        password: "{{ mysql_root_password }}"
-        state: present
-        login_unix_socket: /var/lib/mysql/mysql.sock
-        check_implicit_admin: true
-      #no_log: true
-    
-    # /root/.my.cnf 생성 (이후부터는 password 방식으로도 사용 가능)
-    - name: Create /root/.my.cnf for convenient root access
-      ansible.builtin.copy:
-        content: |
-          [client]
-          user=root
-          password={{ mysql_root_password }}
-          socket=/var/lib/mysql/mysql.sock
-        dest: /root/.my.cnf
-        owner: root
-        group: root
-        mode: '0600'
-      #no_log: true # 비밀번호 노출 방지
+  # root 비밀번호 재설정
+  - name: Set root password using unix socket auth
+    community.mysql.mysql_user:
+      name: root
+      host: localhost
+      password: "{{ mysql_root_password }}"
+      state: present
+      login_unix_socket: /var/lib/mysql/mysql.sock
+      check_implicit_admin: true
+    no_log: true # 비밀번호 노출 방지
 
-    # 원격 root 제거
-    - name: Remove remote root accounts (keep localhost)
-      community.mysql.mysql_user:
-        name: root
-        host: "{{ item }}"
-        state: absent
-        login_unix_socket: /var/lib/mysql/mysql.sock
-        check_implicit_admin: true
-      loop:
-        - "%"
-        - "{{ ansible_fqdn | lower }}"
-        - "{{ inventory_hostname }}"
-      failed_when: false
+  # /root/.my.cnf 생성 (이후부터는 password 방식으로도 사용 가능)
+  - name: Create /root/.my.cnf for convenient root access
+    ansible.builtin.copy:
+      content: |
+        [client]
+        user=root
+        password={{ mysql_root_password }}
+        socket=/var/lib/mysql/mysql.sock
+      dest: /root/.my.cnf
+      owner: root
+      group: root
+      mode: '0600'
+    no_log: true # 비밀번호 노출 방지
 
-    # 익명 사용자 제거
-    - name: Remove anonymous users
-      community.mysql.mysql_user:
-        name: ""
-        host_all: true
-        state: absent
-        login_unix_socket: /var/lib/mysql/mysql.sock
-        check_implicit_admin: true
+  # 원격 root 제거
+  - name: Remove remote root accounts (keep localhost)
+    community.mysql.mysql_user:
+      name: root
+      host: "{{ item }}"
+      state: absent
+    loop:
+    - "%"
+    - "{{ ansible_fqdn | lower }}"
+    - "{{ inventory_hostname }}"
 
-    # test DB 제거
-    - name: Remove test database
-      community.mysql.mysql_db:
-        name: test
-        state: absent
-        login_unix_socket: /var/lib/mysql/mysql.sock
-        check_implicit_admin: true
+  # 익명 사용자 제거
+  - name: Remove anonymous users
+    community.mysql.mysql_user:
+      name: ""
+      host_all: true
+      state: absent
 
-    # 권한 플러시
-    - name: Flush privileges
-      community.mysql.mysql_query:
-        query: "FLUSH PRIVILEGES;"
-        login_unix_socket: /var/lib/mysql/mysql.sock
-        config_file: /root/.my.cnf
+  # test DB 제거
+  - name: Remove test database
+    community.mysql.mysql_db:
+      name: test
+      state: absent
+
+  # 권한 플러시
+  - name: Flush privileges
+    community.mysql.mysql_query:
+      query: "FLUSH PRIVILEGES;"
 
   rescue:
-    # 2단계: .my.cnf 생성 실패 시에만 실행 (비밀번호 제외 출력)
-    - name: Report .my.cnf creation failure
-      ansible.builtin.debug:
-        msg:
-          - "mysql_secure_installation 실패"
-    
-    # 3단계: 플레이북 중단
-    - name: Fail the playbook
-      ansible.builtin.fail:
-        msg: "mysql_secure_installation 실패"
+  # 2단계: 보안 설정 실패 시 (비밀번호 제외 출력)
+  - name: Report .my.cnf creation failure
+    ansible.builtin.debug:
+      msg:
+      - "mysql_secure_installation 실패"
+
+  # 3단계: 플레이북 중단
+  - name: Fail the playbook
+    ansible.builtin.fail:
+      msg: "mysql_secure_installation 실패"
 ...
