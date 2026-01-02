@@ -1,5 +1,32 @@
 ---
-- name: Configure mysql_secure_installation
+- name: MySQL security configuration
   import_tasks: secure.yaml
+  when: db_do_secure | default(true) | bool
   tags: [security, mysql]
+
+- name: Setup databases and users
+  import_tasks: setup.yaml
+  when: db_do_setup | default(false) | bool
+  tags: [setup, mysql]
+
+- name: Setup schema components
+  import_tasks: schema.yaml
+  when: db_do_setup | default(false) | bool
+  tags: [setup, schema, mysql]
+
+- name: Configure replication (master)
+  import_tasks: replication_master.yaml
+  when:
+    - db_do_replication | default(false) | bool
+    - inventory_hostname in groups['db_master']
+  run_once: true
+  delegate_to: "{{ groups['db_master'][0] }}"
+  tags: [replication, mysql]
+
+- name: Configure replication (slave)
+  import_tasks: replication_slave.yaml
+  when:
+    - db_do_replication | default(false) | bool
+    - inventory_hostname in groups['db_slave']
+  tags: [replication, mysql]
 ...

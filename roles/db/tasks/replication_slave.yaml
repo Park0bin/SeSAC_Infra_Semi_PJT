@@ -1,0 +1,72 @@
+---
+# roles/db/tasks/replication_slave.yml
+
+- name: repl_slave | Install replication cnf (slave)
+  ansible.builtin.template:
+    src: 99-replication.cnf.j2
+    dest: /etc/my.cnf.d/99-replication.cnf
+    mode: "0644"
+  vars:
+    repl_role: "slave"
+  notify: db:restart
+
+- name: repl_slave | Apply config immediately if changed
+  ansible.builtin.meta: flush_handlers
+
+- name: repl_slave | Wait for MariaDB
+  ansible.builtin.wait_for:
+    port: 3306
+    delay: 2
+    timeout: 60
+
+- name: repl_slave | Stop replica if running
+  community.mysql.mysql_replication:
+    mode: stopreplica
+    login_unix_socket: /var/lib/mysql/mysql.sock
+  failed_when: false
+
+- name: repl_slave | Reset replica
+  community.mysql.mysql_replication:
+    mode: resetreplica
+    login_unix_socket: /var/lib/mysql/mysql.sock
+  failed_when: false
+
+- name: repl_slave | Change primary to master
+  community.mysql.mysql_replication:
+    mode: changeprimary
+    primary_host: "{{ hostvars[groups['db_master'][0]].ansible_host | default(groups['db_master'][0]) }}"
+    primary_port: 3306
+    primary_user: "{{ mysql_repl_user }}"
+    primary_password: "{{ mysql_repl_password }}"
+    primary_log_file: "{{ hostvars[groups['db_master'][0]].repl_master_log_file }}"
+    primary_log_pos: "{{ hostvars[groups['db_master'][0]].repl_master_log_pos }}"
+    login_unix_socket: "{{ mysql_login_unix_socket | default('/var/lib/mysql/mysql.sock') }}"
+  no_log: true
+
+- name: repl_slave | Start replica
+  community.mysql.mysql_replication:
+    mode: startreplica
+    login_unix_socket: "{{ mysql_login_unix_socket | default('/var/lib/mysql/mysql.sock') }}"
+
+- name: repl_slave | Get replica status
+  community.mysql.mysql_replication:
+    mode: getreplica
+    login_unix_socket: "{{ mysql_login_unix_socket | default('/var/lib/mysql/mysql.sock') }}"
+  register: slave_status
+
+- name: repl_slave | Display replica status
+  ansible.builtin.debug:
+    msg:
+      - "SLAVE: {{ inventory_hostname }}"
+      - "server-id={{ mysql_server_id }}"
+      - "Slave_IO_Running={{ slave_status.Slave_IO_Running }}"
+      - "Slave_SQL_Running={{ slave_status.Slave_SQL_Running }}"
+      - "Seconds_Behind_Master={{ slave_status.Seconds_Behind_Master | default('N/A') }}"
+
+- name: repl_slave | Verify replication is working
+  ansible.builtin.assert:
+    that:
+      - slave_status.Slave_IO_Running == "Yes"
+      - slave_status.Slave_SQL_Running == "Yes"
+    fail_msg: "복제가 정상 작동하지 않습니다. slave_status를 확인하세요."
+

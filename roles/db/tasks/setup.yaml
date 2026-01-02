@@ -1,0 +1,38 @@
+---
+# 데이터베이스 생성
+- name: Create application databases
+  community.mysql.mysql_db:
+    name: "{{ item.name }}"
+    encoding: "{{ item.encoding | default('utf8mb4') }}"
+    collation: "{{ item.collation | default('utf8mb4_unicode_ci') }}"
+    state: present
+    login_unix_socket: /var/lib/mysql/mysql.sock
+  loop: "{{ mysql_databases | default([]) }}"
+  when: (mysql_databases | default([])) | length > 0
+
+# 사용자 생성 및 권한 부여 (에러 처리 포함)
+- name: Handle MySQL user creation
+  block:
+    - name: Create application users and grant privileges
+      community.mysql.mysql_user:
+        name: "{{ item.name }}"
+        password: "{{ item.password }}"
+        priv: "{{ item.priv }}"
+        host: "{{ item.host | default('%') }}"
+        state: present
+        login_unix_socket: /var/lib/mysql/mysql.sock
+      loop: "{{ mysql_users | default([]) }}"
+      no_log: true
+
+  rescue:
+    - name: Report user creation failure
+      ansible.builtin.debug:
+        msg:
+          - "❌ MySQL 사용자 생성 실패"
+          - "사용자 목록: {{ mysql_users | map(attribute='name') | list }}"
+    
+    - name: Fail the playbook
+      ansible.builtin.fail:
+        msg: "MySQL 사용자 생성에 실패했습니다."
+  when: (mysql_users | default([])) | length > 0
+...

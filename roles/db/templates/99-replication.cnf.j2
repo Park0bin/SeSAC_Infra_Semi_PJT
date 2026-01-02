@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[mysqld]
+autocommit=0
+log-bin=mysql-bin
+server-id={{ mysql_server_id }}
+{% if repl_role == 'slave' %}
+read_only=1
+{% endif %}
+

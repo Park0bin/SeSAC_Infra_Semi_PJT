@@ -1,0 +1,152 @@
+---
+# roles/db/tasks/schema.yaml
+# 컨트롤러의 files/schema_v*.sql 파일 중 mysql_schema_version에 맞는 것을 마스터 DB에 적용
+
+- name: Apply schema (non-blocking)
+  block:
+    # 1) 컨트롤러에서 schema 파일 찾기
+    - name: Find schema files on controller
+      ansible.builtin.find:
+        paths: "{{ role_path }}/files"
+        patterns: "schema_v*.sql"
+        file_type: file
+      register: schema_files
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    # 2) 파일 없으면 스킵
+    - name: Skip - no schema files found
+      ansible.builtin.debug:
+        msg: "⚠️ schema_v*.sql 파일이 없습니다. 스킵"
+      when: schema_files.files | length == 0
+
+    # 3) 파일 있으면 처리
+    - name: Process schema files
+      when: schema_files.files | length > 0
+      block:
+        # 파일명에서 버전 추출 (schema_v1.0.0.sql → 1.0.0)
+        - name: Extract versions from filenames
+          ansible.builtin.set_fact:
+            available_versions: >-
+              {{
+                schema_files.files
+                | map(attribute='path')
+                | map('basename')
+                | select('match', '^schema_v[0-9]')
+                | map('replace', 'schema_v', '')
+                | map('replace', '.sql', '')
+                | list
+              }}
+          run_once: true
+
+        # 디버그: 추출된 버전 확인
+        - name: Debug extracted versions
+          ansible.builtin.debug:
+            msg:
+              - "발견한 파일들: {{ schema_files.files | map(attribute='path') | map('basename') | list }}"
+              - "추출된 버전들: {{ available_versions }}"
+          run_once: true
+
+        # latest면 버전 정렬해서 최신 선택, 아니면 지정 버전 사용
+        - name: Determine target version
+          ansible.builtin.set_fact:
+            target_version: >-
+              {{
+                (
+                  available_versions
+                  | map('split', '.')
+                  | map('map', 'int')
+                  | list
+                  | sort
+                  | last
+                  | join('.')
+                )
+                if ((mysql_schema_version | lower) == 'latest' and (available_versions | length) > 0)
+                else (mysql_schema_version | regex_replace('^v', ''))
+              }}
+          run_once: true
+
+        # 대상 파일명 생성
+        - name: Set target schema filename
+          ansible.builtin.set_fact:
+            target_schema_file: "schema_v{{ target_version }}.sql"
+          run_once: true
+
+        # 파일 존재 확인
+        - name: Check if target file exists
+          ansible.builtin.set_fact:
+            schema_exists: >-
+              {{
+                target_schema_file in (schema_files.files | map(attribute='path') | map('basename') | list)
+              }}
+          run_once: true
+
+        # 파일 없으면 경고
+        - name: Warn if target schema not found
+          ansible.builtin.debug:
+            msg:
+              - "⚠️ 대상 스키마 파일을 찾을 수 없습니다"
+              - "요청 버전: {{ mysql_schema_version }}"
+              - "찾는 파일: {{ target_schema_file }}"
+              - "사용 가능한 버전: {{ available_versions }}"
+          when: not (schema_exists | bool)
+
+        # 마스터에 스키마 복사
+        - name: Copy schema to master
+          ansible.builtin.copy:
+            src: "{{ target_schema_file }}"
+            dest: "/tmp/{{ target_schema_file }}"
+            mode: "0644"
+          when:
+            - inventory_hostname in groups['db_master']
+            - schema_exists | bool
+
+        # 마스터에 스키마 적용 (실패해도 계속)
+        - name: Import schema on master (continue on failure)
+          community.mysql.mysql_db:
+            name: "{{ mysql_schema_database | default(mysql_databases[0].name) }}"
+            state: import
+            target: "/tmp/{{ target_schema_file }}"
+            login_unix_socket: /var/lib/mysql/mysql.sock
+          register: import_result
+          when:
+            - inventory_hostname in groups['db_master']
+            - schema_exists | bool
+          failed_when: false
+
+        # 결과 출력
+        - name: Report schema import result
+          ansible.builtin.debug:
+            msg:
+              - "📋 스키마 적용 {{ '성공' if not (import_result.failed | default(false)) else '실패 (계속 진행)' }}"
+              - "버전: {{ target_version }}"
+              - "파일: {{ target_schema_file }}"
+              - "DB: {{ mysql_schema_database | default(mysql_databases[0].name) }}"
+              - "{{ import_result.msg | default('') }}"
+          when:
+            - inventory_hostname in groups['db_master']
+            - import_result is defined
+
+  rescue:
+    - name: Report exception (continue)
+      ansible.builtin.debug:
+        msg: "⚠️ 스키마 적용 중 예외 발생. 계속 진행합니다."
+
+  when:
+    - mysql_use_schema | default(false) | bool
+    - mysql_schema_version is defined
+    - (mysql_databases | default([])) | length > 0
+
+
+- name: Display databases
+  block:
+    - name: Get database list
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        query: SHOW DATABASES
+      register: db_list
+
+    - name: Show created databases
+      ansible.builtin.debug:
+        msg: "📊 데이터베이스: {{ db_list.query_result[0] | map(attribute='Database') | list }}"

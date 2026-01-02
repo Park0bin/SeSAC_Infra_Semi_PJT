@@ -1,0 +1,12 @@
+---
+collections:
+  - name: ansible.posix
+    version: ">=2.1.0"        
+  
+  - name: community.mysql
+    version: ">=4.0.1"        
+
+roles:
+  - name: IbrahimMohammad.mysql_secure_installation
+    version: master
+...

@@ -1,0 +1,44 @@
+---
+common_packages:
+  - mariadb-server
+
+db_extra_packages:
+  - python3-PyMySQL
+
+common_services:
+  - mariadb
+
+common_firewalld_services:
+  - mysql
+
+db_services_restart: [mariadb]
+db_services_reload: []
+
+# 플레이북 실행 태그
+db_do_secure: true
+db_do_setup: false
+db_do_replication: false
+
+mysql_server_id: "{{ 100 + groups['db'].index(inventory_hostname) }}"
+mysql_master_host: "{{ hostvars[groups['db_master'][0]].ansible_host }}"
+
+mysql_root_password: "{{ vault_mysql_root_password }}"
+
+mysql_repl_user: "repl_user"
+mysql_repl_password: "{{ vault_mysql_repl_password }}"
+
+# 한글, 이모티콘 지원 인코딩 설정
+mysql_databases:
+  - name: myapp_db
+    encoding: utf8mb4
+    collation: utf8mb4_unicode_ci
+
+mysql_users:
+  - name: app_user
+    password: "{{ vault_mysql_app_password }}"
+    priv: "myapp_db.*:ALL"
+    host: "%"
+
+mysql_schema_version: "latest"  # 자동 최신 버전
+mysql_use_schema: true
+...

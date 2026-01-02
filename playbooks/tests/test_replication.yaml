@@ -1,0 +1,188 @@
+---
+# test_replication.yaml
+# 마스터-슬레이브 복제를 테스트하는 플레이북
+# 1. 마스터에 테스트 데이터 INSERT
+# 2. 슬레이브에서 데이터 확인
+# 3. 마스터에서 테스트 데이터 DELETE
+# 4. 슬레이브에서 삭제 확인
+
+- name: Test MySQL Master-Slave Replication
+  hosts: db_master,db_slave
+  become: true
+  gather_facts: true
+
+  vars:
+    target_db: "{{ mysql_databases[0].name }}"
+    test_table: "replication_test"
+    test_id: 99999
+    test_data: "Replication Test Data - {{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+  tasks:
+    # ========================================
+    # 준비: 테스트 테이블 생성 (마스터에서만)
+    # ========================================
+    - name: "[Master] Create test table if not exists"
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        login_db: "{{ target_db }}"
+        query: |
+          CREATE TABLE IF NOT EXISTS {{ test_table }} (
+            id INT PRIMARY KEY,
+            data VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+      when: inventory_hostname in groups['db_master']
+
+    - name: "Wait for table creation to replicate"
+      ansible.builtin.pause:
+        seconds: 2
+      run_once: true
+
+    # ========================================
+    # 1단계: 마스터에 데이터 삽입
+    # ========================================
+    - name: "[Master] Insert test data"
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        login_db: "{{ target_db }}"
+        query: |
+          INSERT INTO {{ test_table }} (id, data) 
+          VALUES ({{ test_id }}, '{{ test_data }}')
+          ON DUPLICATE KEY UPDATE data = '{{ test_data }}'
+      register: insert_result
+      when: inventory_hostname in groups['db_master']
+
+    - name: "[Master] Report insert result"
+      ansible.builtin.debug:
+        msg:
+          - "✅ 마스터에 데이터 삽입 완료"
+          - "테이블: {{ test_table }}"
+          - "ID: {{ test_id }}"
+          - "데이터: {{ test_data }}"
+      when: inventory_hostname in groups['db_master']
+
+    # ========================================
+    # 2단계: 복제 대기 후 슬레이브에서 읽기
+    # ========================================
+    - name: "Wait for replication"
+      ansible.builtin.pause:
+        seconds: 3
+        prompt: "복제 대기 중..."
+      run_once: true
+
+    - name: "[Slave] Read test data from slave"
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        login_db: "{{ target_db }}"
+        query: |
+          SELECT * FROM {{ test_table }} WHERE id = {{ test_id }}
+      register: slave_read_result
+      when: inventory_hostname in groups['db_slave']
+
+    - name: "[Slave] Verify data exists on slave"
+      ansible.builtin.debug:
+        msg:
+          - "============================================"
+          - "📖 [슬레이브] 읽기 테스트 #1"
+          - "============================================"
+          - "호스트: {{ inventory_hostname }}"
+          - "결과: {{ '✅ 데이터 존재 (복제 성공)' if (slave_read_result.rowcount[0] | int) > 0 else '❌ 데이터 없음 (복제 실패)' }}"
+          - "데이터: {{ slave_read_result.query_result[0] if (slave_read_result.rowcount[0] | int) > 0 else '없음' }}"
+      when: inventory_hostname in groups['db_slave']
+
+    # ========================================
+    # 3단계: 마스터에서 데이터 삭제
+    # ========================================
+    - name: "Pause before deletion"
+      ansible.builtin.pause:
+        seconds: 2
+      run_once: true
+
+    - name: "[Master] Delete test data"
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        login_db: "{{ target_db }}"
+        query: |
+          DELETE FROM {{ test_table }} WHERE id = {{ test_id }}
+      register: delete_result
+      when: inventory_hostname in groups['db_master']
+
+    - name: "[Master] Report delete result"
+      ansible.builtin.debug:
+        msg:
+          - "🗑️  마스터에서 데이터 삭제 완료"
+          - "삭제된 행: {{ delete_result.rowcount[0] | default(0) }}"
+      when: inventory_hostname in groups['db_master']
+
+    # ========================================
+    # 4단계: 복제 대기 후 슬레이브에서 다시 읽기
+    # ========================================
+    - name: "Wait for deletion replication"
+      ansible.builtin.pause:
+        seconds: 3
+        prompt: "삭제 복제 대기 중..."
+      run_once: true
+
+    - name: "[Slave] Read test data again from slave"
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        login_db: "{{ target_db }}"
+        query: |
+          SELECT * FROM {{ test_table }} WHERE id = {{ test_id }}
+      register: slave_read_result2
+      when: inventory_hostname in groups['db_slave']
+
+    - name: "[Slave] Verify data deleted on slave"
+      ansible.builtin.debug:
+        msg:
+          - "============================================"
+          - "📖 [슬레이브] 읽기 테스트 #2"
+          - "============================================"
+          - "호스트: {{ inventory_hostname }}"
+          - "결과: {{ '✅ 데이터 없음 (삭제 복제 성공)' if (slave_read_result2.rowcount[0] | int) == 0 else '❌ 데이터 존재 (삭제 복제 실패)' }}"
+          - "데이터: {{ slave_read_result2.query_result[0] if (slave_read_result2.rowcount[0] | int) > 0 else '없음' }}"
+      when: inventory_hostname in groups['db_slave']
+
+    # ========================================
+    # 복제 상태 확인
+    # ========================================
+    - name: "[Slave] Check replication status"
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        query: "SHOW SLAVE STATUS"
+      register: replication_status
+      when: inventory_hostname in groups['db_slave']
+
+    - name: "[Slave] Display replication status"
+      ansible.builtin.debug:
+        msg:
+          - "============================================"
+          - "🔄 복제 상태"
+          - "============================================"
+          - "호스트: {{ inventory_hostname }}"
+          - "Slave_IO_Running: {{ replication_status.query_result[0][0].Slave_IO_Running }}"
+          - "Slave_SQL_Running: {{ replication_status.query_result[0][0].Slave_SQL_Running }}"
+          - "Seconds_Behind_Master: {{ replication_status.query_result[0][0].Seconds_Behind_Master }}"
+          - "Last_Error: {{ replication_status.query_result[0][0].Last_Error if replication_status.query_result[0][0].Last_Error else '없음' }}"
+      when: 
+        - inventory_hostname in groups['db_slave']
+        - replication_status.query_result[0] | length > 0
+
+    # ========================================
+    # 최종 요약
+    # ========================================
+    - name: "Test summary"
+      ansible.builtin.debug:
+        msg:
+          - "============================================"
+          - "🎯 복제 테스트 완료"
+          - "============================================"
+          - "데이터베이스: {{ target_db }}"
+          - "테스트 테이블: {{ test_table }}"
+          - "테스트 시간: {{ ansible_date_time.iso8601 }}"
+          - ""
+          - "✅ 1단계: 마스터 INSERT - 완료"
+          - "✅ 2단계: 슬레이브 SELECT (존재 확인) - 완료"
+          - "✅ 3단계: 마스터 DELETE - 완료"
+          - "✅ 4단계: 슬레이브 SELECT (삭제 확인) - 완료"
+      run_once: true

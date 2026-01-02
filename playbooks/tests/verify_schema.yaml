@@ -1,0 +1,97 @@
+---
+# verify_schema.yaml
+# DB 스키마가 제대로 적용되었는지 확인하는 플레이북
+
+- name: Verify database schema
+  hosts: db_master
+  become: true
+  gather_facts: false
+
+  vars:
+    target_db: "{{ mysql_schema_database | default(mysql_databases[0].name) }}"
+
+  tasks:
+    - name: Check if database exists
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        query: "SHOW DATABASES LIKE '{{ target_db }}'"
+      register: db_check
+
+    - name: Report database status
+      ansible.builtin.debug:
+        msg: "{{ '✅ 데이터베이스 존재함' if (db_check.rowcount[0] | int) > 0 else '❌ 데이터베이스 없음' }}: {{ target_db }}"
+
+    - name: Get table list
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        login_db: "{{ target_db }}"
+        query: "SHOW TABLES"
+      register: tables
+      when: (db_check.rowcount[0] | int) > 0
+
+    - name: Display tables
+      ansible.builtin.debug:
+        msg: "📋 테이블 목록 ({{ tables.rowcount[0] }}개): {{ tables.query_result[0] | map(attribute='Tables_in_' ~ target_db) | list }}"
+      when:
+        - (db_check.rowcount[0] | int) > 0
+        - tables.rowcount[0] | int > 0
+
+    - name: No tables found
+      ansible.builtin.debug:
+        msg: "⚠️ 테이블이 없습니다"
+      when:
+        - (db_check.rowcount[0] | int) > 0
+        - tables.rowcount[0] | int == 0
+
+    - name: Get table structures
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        login_db: "{{ target_db }}"
+        query: "DESCRIBE {{ item }}"
+      loop: "{{ tables.query_result[0] | map(attribute='Tables_in_' ~ target_db) | list }}"
+      register: table_structures
+      when:
+        - (db_check.rowcount[0] | int) > 0
+        - tables.rowcount[0] | int > 0
+
+    - name: Display table structures
+      ansible.builtin.debug:
+        msg:
+          - "📊 테이블: {{ item.item }}"
+          - "컬럼: {{ item.query_result[0] | map(attribute='Field') | list }}"
+      loop: "{{ table_structures.results }}"
+      when:
+        - table_structures is defined
+        - item.query_result is defined
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check schema version table (if exists)
+      community.mysql.mysql_query:
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        login_db: "{{ target_db }}"
+        query: "SELECT * FROM schema_version ORDER BY applied_at DESC LIMIT 5"
+      register: schema_versions
+      when: 
+        - (db_check.rowcount[0] | int) > 0
+        - "'schema_version' in (tables.query_result[0] | map(attribute='Tables_in_' ~ target_db) | list)"
+      failed_when: false
+
+    - name: Display schema version history
+      ansible.builtin.debug:
+        msg: "🔖 스키마 버전 히스토리: {{ schema_versions.query_result[0] }}"
+      when:
+        - schema_versions is defined
+        - schema_versions.query_result is defined
+        - schema_versions.query_result[0] | length > 0
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "============================================"
+          - "📊 스키마 확인 요약"
+          - "============================================"
+          - "데이터베이스: {{ target_db }}"
+          - "테이블 개수: {{ tables.rowcount[0] | default(0) }}"
+          - "상태: {{ '✅ 정상' if (tables.rowcount[0] | default(0) | int) > 0 else '⚠️ 테이블 없음' }}"
+      when: (db_check.rowcount[0] | int) > 0
